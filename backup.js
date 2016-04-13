@@ -60,6 +60,7 @@ function run(feedPath, concurrent, backupPath){
             .then(() => {
                 return {
                     available: 0,
+                    availableVideos: 0,
                     backupPath: path.normalize(cfg.backupPath || process.cwd() + '/backup/'),
                     concurrent: cfg.concurrent || 20,
                     downloaded: 0,
@@ -67,7 +68,7 @@ function run(feedPath, concurrent, backupPath){
                     promises: [],
                     resolve: resolve,
                     videos: 0,
-                    youtube: cfg.youtube ? [] : false
+                    youtube: cfg.youtube || false
                 };
             })
             .then(checkWriteSpace)
@@ -153,8 +154,6 @@ function processEntry(cfg){
         var promise = downloadEntry(item, cfg);
         cfg.promises.push(promise);
         promise.then(processEntry);
-    }else if(cfg.youtube) {
-        initVideo(cfg);
     }else{
         exit(cfg);
     }
@@ -183,8 +182,25 @@ function downloadEntry(item, cfg){
         }else{
             var metadata = JSON.parse(item['soup:attributes']);
             if(cfg.youtube && metadata.type === 'video' && youtubeRE.test(metadata.source)){
-                cfg.youtube.push(metadata);
-                resolve(cfg);
+                var ytdl = require('ytdl-core');
+                ytdl.getInfo(metadata.source, (err, info) => {
+                    if(err) return resolve(cfg);
+                    var filePath = [cfg.backupPath, 'video/', info.video_id, '.mp4'].join('');
+                    cfg.availableVideos++;
+                    fs.access(filePath, fs.R_OK, err => {
+                        if(err && err.code === 'ENOENT'){
+                            log('downloading video', info.video_id);
+                            ytdl.downloadFromInfo(info, ytOptions)
+                                .pipe(fs.createWriteStream(filePath))
+                                .on('finish', () => {
+                                    cfg.videos++;
+                                    resolve(cfg);
+                                }).on('close', () => resolve(cfg));
+                        }else{
+                            resolve(cfg);
+                        }
+                    });
+                });
             }else{
                 resolve(cfg);
             }
@@ -192,43 +208,7 @@ function downloadEntry(item, cfg){
     });
 }
 
-function initVideo(cfg){
-    if(cfg.items){
-        delete cfg.items;
-        log('0 entries left');
-        log(cfg.youtube.length, 'videos to process');
-        downloadVideo(cfg);
-    }
-}
-
-function downloadVideo(cfg){
-    var ytdl = require('ytdl-core'),
-        metadata = cfg.youtube.shift();
-    if(metadata){
-        ytdl.getInfo(metadata.source, (err, info) => {
-            if(err) return downloadVideo(cfg);
-            var filePath = [cfg.backupPath, 'video/', info.video_id, '.mp4'].join('');
-            fs.access(filePath, fs.R_OK, err => {
-                if(err && err.code === 'ENOENT'){
-                    log('downloading video', info.video_id);
-                    ytdl.downloadFromInfo(info, ytOptions)
-                        .pipe(fs.createWriteStream(filePath))
-                        .on('finish', () => {
-                            cfg.videos++;
-                            downloadVideo(cfg);
-                        }).on('close', () => downloadVideo(cfg));
-                }else{
-                    downloadVideo(cfg);
-                }
-            });
-        });
-    }else{
-        exit(cfg);
-    }
-}
-
 function exit(cfg){
-    debugger;
     if(!cfg.finished){
         cfg.finished = true;
         Promise.all(cfg.promises)
@@ -237,8 +217,8 @@ function exit(cfg){
                 log('found', cfg.available, 'available assets');
                 log('downloaded', cfg.downloaded, 'new assets');
                 if(cfg.youtube){
+                    log('found', cfg.availableVideos, 'available videos');
                     log('downloaded', cfg.videos, 'new videos');
-                    delete cfg.youtube;
                 }
                 log('backup saved in', cfg.backupPath);
                 var resolve = cfg.resolve;
