@@ -34,26 +34,28 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-console.log('Soup Backup by Błażej Wolańczyk (c) 2016');
-
 var fs = require('fs'),
     http = require('http'),
-    path = require('path'),
-    backupPath = __dirname + '/backup/',
-    feedPath = __dirname + '/' + (process.argv[2] || 'soup.rss'),
-    concurrent = process.argv[3] ? +process.argv[3] : 20,
-    downloaded = 0,
-    available = 0,
-    total = 0;
+    path = require('path');
 
-install()
-    .then(checkWriteSpace)
-    .then(readFeed)
-    .then((items) => {
-        total = items.length;
-        console.log(new Date().toLocaleTimeString(), total, 'entries to process');
-        return items;
-    }).then(initConcurrent);
+function run(feedPath, concurrent, backupPath){
+    return new Promise(resolve => {
+        install()
+            .then(() => {
+                return {
+                    available: 0,
+                    backupPath: backupPath || __dirname + '/backup/',
+                    concurrent: concurrent || 20,
+                    downloaded: 0,
+                    feedPath: feedPath,
+                    resolve: resolve
+                };
+            })
+            .then(checkWriteSpace)
+            .then(readFeed)
+            .then(initConcurrent);
+    });
+}
 
 function install(){
     return new Promise(resolve => {
@@ -71,27 +73,27 @@ function install(){
     });
 }
 
-function checkWriteSpace(){
+function checkWriteSpace(cfg){
     return new Promise(resolve => {
-        fs.access(backupPath, fs.R_OK, err => {
+        fs.access(cfg.backupPath, fs.R_OK, err => {
             if(err && err.code === 'ENOENT'){
                 console.log(new Date().toLocaleTimeString(), 'creating backup directory');
-                fs.mkdir(backupPath, err => {
+                fs.mkdir(cfg.backupPath, err => {
                     if(err) throw err;
-                    resolve();
+                    resolve(cfg);
                 });
             }else if(err) {
                 throw err;
             }else{
-                resolve();
+                resolve(cfg);
             }
         });
     });
 }
 
-function readFeed(){
+function readFeed(cfg){
     return new Promise(resolve => {
-        fs.readFile(feedPath, function (err, data) {
+        fs.readFile(cfg.feedPath, function (err, data) {
             if(err){
                 if(err.code === 'ENOENT'){
                     console.log(new Date().toLocaleTimeString(), 'no feed found at path', feedPath);
@@ -102,63 +104,76 @@ function readFeed(){
                 explicitArray: false
             }).parseString(data, (err, result) => {
                 if (err) throw err;
-                resolve(result.rss.channel.item);
+                cfg.items = result.rss.channel.item;
+                resolve(cfg);
             });
         });
     });
 }
 
-function initConcurrent(items){
-    for(var i =0; i < concurrent; i++){
-        processEntry(items);
+function initConcurrent(cfg){
+    cfg.total = cfg.items.length;
+    console.log(new Date().toLocaleTimeString(), cfg.total, 'entries to process');
+    for(var i =0; i < cfg.concurrent; i++){
+        processEntry(cfg);
     }
 }
 
-function processEntry(items){
+function processEntry(cfg){
+    var items = cfg.items;
     if(items.length && items.length % 100 === 0){
         console.log(new Date().toLocaleTimeString(), items.length, 'entries left');
     }
     var item = items.shift();
     if(item){
-        downloadEntry(item)
-            .then(() => processEntry(items));
+        downloadEntry(item, cfg)
+            .then(processEntry);
     }else{
-        exit();
+        exit(cfg);
     }
 }
 
-function downloadEntry(item){
+function downloadEntry(item, cfg){
     return new Promise(resolve => {
         if(item.enclosure){
-            available++;
+            cfg.available++;
             var url = item.enclosure.$.url,
-                filePath = backupPath + path.basename(url);
+                filePath = cfg.backupPath + path.basename(url);
             fs.access(filePath, fs.R_OK, err => {
                 if(err && err.code === 'ENOENT'){
                     var file = fs.createWriteStream(filePath);
                     http.get(url, response => {
                         response.pipe(file);
                         response.on('end', () => {
-                            downloaded++;
-                            resolve();
+                            cfg.downloaded++;
+                            resolve(cfg);
                         });
                     }).on('error', err => {
                         console.error(new Date().toLocaleTimeString(), err);
-                        resolve();
+                        resolve(cfg);
                     });
                 }else{
-                    resolve();
+                    resolve(cfg);
                 }
             });
         }else{
-            resolve();
+            resolve(cfg);
         }
     });
 }
 
-function exit(){
-    console.log(new Date().toLocaleTimeString(), 'processed', total, 'entries');
-    console.log(new Date().toLocaleTimeString(), 'found', available, 'available assets');
-    console.log(new Date().toLocaleTimeString(), 'downloaded', downloaded, 'new assets');
-    process.exit();
+function exit(cfg){
+    console.log(new Date().toLocaleTimeString(), 'processed', cfg.total, 'entries');
+    console.log(new Date().toLocaleTimeString(), 'found', cfg.available, 'available assets');
+    console.log(new Date().toLocaleTimeString(), 'downloaded', cfg.downloaded, 'new assets');
+    cfg.resolve(cfg);
+}
+
+if(!module.parent){
+    console.log('Soup Backup by Błażej Wolańczyk (c) 2016');
+    var feedPath = __dirname + '/' + (process.argv[2] || 'soup.rss'),
+        concurrent = process.argv[3] ? +process.argv[3] : undefined;
+    run(feedPath, concurrent).then(() => process.exit());
+}else{
+    module.exports = run;
 }
