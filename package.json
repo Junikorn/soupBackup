@@ -1,0 +1,19 @@
+{
+  "name": "soupBackup",
+  "version": "1.0.0",
+  "description": "CMD tool for backing up available soup.io assets taken from soup rss feed",
+  "main": "backup.js",
+  "dependencies": {
+    "xml2js": "0.4.16"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "soup.io",
+    "backup"
+  ],
+  "author": "Błażej Wolańczyk <https://github.com/Junikorn>",
+  "license": "MIT"
+}
