@@ -44,6 +44,7 @@
 var fs = require('fs'),
     http = require('http'),
     path = require('path'),
+    ytdl = require('ytdl-core'),
     youtubeRE = /youtube\.com|youtu\.be/i,
     ytOptions = { filter: function(format) {
         return format.container === 'mp4' && format.audioBitrate && format.bitrate;
@@ -96,21 +97,25 @@ function install(){
 }
 
 function checkWriteSpace(cfg){
+    return Promise.resolve()
+        .then(() => ensureDirectory(cfg.backupPath))
+        .then(() => ensureDirectory(cfg.backupPath + 'video/'))
+        .then(() => cfg);
+}
+
+function ensureDirectory(path){
     return new Promise(resolve => {
-        fs.access(cfg.backupPath, fs.R_OK, err => {
+        fs.access(path, fs.R_OK | fs.W_OK, err => {
             if(err && err.code === 'ENOENT'){
-                log('creating backup directory');
-                fs.mkdir(cfg.backupPath, err => {
+                log('creating backup directory', path);
+                fs.mkdir(path, err => {
                     if(err) throw err;
-                    fs.mkdir(cfg.backupPath + 'video/', err => {
-                        if(err) throw err;
-                        resolve(cfg);
-                    });
+                    resolve();
                 });
             }else if(err) {
                 throw err;
             }else{
-                resolve(cfg);
+                resolve();
             }
         });
     });
@@ -121,7 +126,7 @@ function readFeed(cfg){
         fs.readFile(cfg.feedPath, function (err, data) {
             if(err){
                 if(err.code === 'ENOENT'){
-                    log('no feed found at path', feedPath);
+                    log('no feed found at path', cfg.feedPath);
                 }
                 throw err;
             }
@@ -182,7 +187,6 @@ function downloadEntry(item, cfg){
         }else{
             var metadata = JSON.parse(item['soup:attributes']);
             if(cfg.youtube && metadata.type === 'video' && youtubeRE.test(metadata.source)){
-                var ytdl = require('ytdl-core');
                 ytdl.getInfo(metadata.source, (err, info) => {
                     if(err) return resolve(cfg);
                     var filePath = [cfg.backupPath, 'video/', info.video_id, '.mp4'].join('');
