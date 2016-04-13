@@ -20,7 +20,7 @@
  * Tool can also be used as an Node module
  * @function run
  * @param {String} feedPath - absolute path of rss feed
- * @param {Number} [concurrent] - amount of concurrent downloads
+ * @param {Number} [concurrent=20] - amount of concurrent downloads
  * @param {String} [backupPath=CWD+'/backup/'] - absolute path for backup directory
  * @returns {Promise} promise resolving with statistics object
  *
@@ -43,20 +43,31 @@
 
 var fs = require('fs'),
     http = require('http'),
-    path = require('path');
+    path = require('path'),
+    youtubeRE = /youtube\.com|youtu\.be/i,
+    ytOptions = { filter: function(format) {
+        return format.container === 'mp4' && format.audioBitrate && format.bitrate;
+    } };
 
 function run(feedPath, concurrent, backupPath){
+    var cfg = (typeof(feedPath) === 'string') ? {
+        feedPath: feedPath
+    } : feedPath;
+    cfg.concurrent = concurrent;
+    cfg.backupPath = backupPath;
     return new Promise(resolve => {
         install()
             .then(() => {
                 return {
                     available: 0,
-                    backupPath: path.normalize(backupPath || process.cwd() + '/backup/'),
-                    concurrent: concurrent || 20,
+                    backupPath: path.normalize(cfg.backupPath || process.cwd() + '/backup/'),
+                    concurrent: cfg.concurrent || 20,
                     downloaded: 0,
-                    feedPath: path.normalize(feedPath),
+                    feedPath: path.normalize(cfg.feedPath),
                     promises: [],
-                    resolve: resolve
+                    resolve: resolve,
+                    videos: 0,
+                    youtube: cfg.youtube ? [] : false
                 };
             })
             .then(checkWriteSpace)
@@ -70,7 +81,7 @@ function install(){
         fs.access(__dirname + '/node_modules', fs.R_OK, err => {
             if(err && !module.parent) {
                 log('installing dependencies');
-                require('child_process').exec('npm install xml2js@0.4.16', err => {
+                require('child_process').exec('npm install', err => {
                     if (err) throw err;
                     resolve();
                 });
@@ -90,7 +101,10 @@ function checkWriteSpace(cfg){
                 log('creating backup directory');
                 fs.mkdir(cfg.backupPath, err => {
                     if(err) throw err;
-                    resolve(cfg);
+                    fs.mkdir(cfg.backupPath + 'video/', err => {
+                        if(err) throw err;
+                        resolve(cfg);
+                    });
                 });
             }else if(err) {
                 throw err;
@@ -139,6 +153,8 @@ function processEntry(cfg){
         var promise = downloadEntry(item, cfg);
         cfg.promises.push(promise);
         promise.then(processEntry);
+    }else if(cfg.youtube) {
+        initVideo(cfg);
     }else{
         exit(cfg);
     }
@@ -159,21 +175,60 @@ function downloadEntry(item, cfg){
                             cfg.downloaded++;
                             resolve(cfg);
                         });
-                    }).on('error', err => {
-                        log(err);
-                        resolve(cfg);
-                    });
+                    }).on('error', () => resolve(cfg));
                 }else{
                     resolve(cfg);
                 }
             });
         }else{
-            resolve(cfg);
+            var metadata = JSON.parse(item['soup:attributes']);
+            if(cfg.youtube && metadata.type === 'video' && youtubeRE.test(metadata.source)){
+                cfg.youtube.push(metadata);
+                resolve(cfg);
+            }else{
+                resolve(cfg);
+            }
         }
     });
 }
 
+function initVideo(cfg){
+    if(cfg.items){
+        delete cfg.items;
+        log('0 entries left');
+        log(cfg.youtube.length, 'videos to process');
+        downloadVideo(cfg);
+    }
+}
+
+function downloadVideo(cfg){
+    var ytdl = require('ytdl-core'),
+        metadata = cfg.youtube.shift();
+    if(metadata){
+        ytdl.getInfo(metadata.source, (err, info) => {
+            if(err) return downloadVideo(cfg);
+            var filePath = [cfg.backupPath, 'video/', info.video_id, '.mp4'].join('');
+            fs.access(filePath, fs.R_OK, err => {
+                if(err && err.code === 'ENOENT'){
+                    log('downloading video', info.video_id);
+                    ytdl.downloadFromInfo(info, ytOptions)
+                        .pipe(fs.createWriteStream(filePath))
+                        .on('finish', () => {
+                            cfg.videos++;
+                            downloadVideo(cfg);
+                        }).on('close', () => downloadVideo(cfg));
+                }else{
+                    downloadVideo(cfg);
+                }
+            });
+        });
+    }else{
+        exit(cfg);
+    }
+}
+
 function exit(cfg){
+    debugger;
     if(!cfg.finished){
         cfg.finished = true;
         Promise.all(cfg.promises)
@@ -181,6 +236,10 @@ function exit(cfg){
                 log('processed', cfg.total, 'entries');
                 log('found', cfg.available, 'available assets');
                 log('downloaded', cfg.downloaded, 'new assets');
+                if(cfg.youtube){
+                    log('downloaded', cfg.videos, 'new videos');
+                    delete cfg.youtube;
+                }
                 log('backup saved in', cfg.backupPath);
                 var resolve = cfg.resolve;
                 delete cfg.items;
@@ -199,9 +258,11 @@ function log(){
 
 if(!module.parent){
     console.log('Soup Backup by Błażej Wolańczyk (c) 2016');
-    var feedPath = __dirname + '/' + (process.argv[2] || 'soup.rss'),
-        concurrent = process.argv[3] ? +process.argv[3] : undefined;
-    run(feedPath, concurrent).then(() => process.exit());
+    run({
+        concurrent: process.argv[3] ? +process.argv[3] : undefined,
+        feedPath: __dirname + '/' + (process.argv[2] || 'soup.rss'),
+        youtube: true
+    }).then(() => process.exit());
 }else{
     module.exports = run;
 }
