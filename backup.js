@@ -2,7 +2,7 @@
 
 /**
  * @author Błażej Wolańczyk <https://github.com/Junikorn>
- * @name soupBackup
+ * @name soup_backup
  * @version 1.0.0
  *
  * CMD tool for backing up available soup.io assets taken from soup RSS feed

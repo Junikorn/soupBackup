@@ -1,5 +1,5 @@
 {
-  "name": "soupBackup",
+  "name": "soup_backup",
   "version": "1.0.0",
   "description": "CMD tool for backing up available soup.io assets taken from soup rss feed",
   "main": "backup.js",
@@ -15,5 +15,13 @@
     "backup"
   ],
   "author": "Błażej Wolańczyk <https://github.com/Junikorn>",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Junikorn/soupBackup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Junikorn/soupBackup/issues"
+  },
+  "homepage": "https://github.com/Junikorn/soupBackup#readme"
 }
