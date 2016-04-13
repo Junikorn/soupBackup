@@ -3,7 +3,7 @@
 /**
  * @author Błażej Wolańczyk <https://github.com/Junikorn>
  * @name soup_backup
- * @version 1.0.0
+ * @version 1.0.1
  *
  * CMD tool for backing up available soup.io assets taken from soup RSS feed
  * You can find RSS feed on soup.io in options > privacy > export (RSS)
