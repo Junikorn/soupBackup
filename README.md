@@ -14,6 +14,21 @@ How to run:
  - [optionally] after space write in number of simultaneous downloads
      (default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)
 
+ Tool can also be used as an Node module
+ ```javascript
+  var soupBackup = require('soup_backup');
+  soupBackup('soup.rss').then(stats => {
+    //do something
+  });
+ /**
+  * @function soupBackup
+  * @param {String} feedPath - absolute path of rss feed
+  * @param {Number} [concurrent] - amount of concurrent downloads
+  * @param {String} [backupPath=CWD+'/backup/'] - absolute path for backup directory
+  * @returns {Promise} promise resolving with statistics object
+  */
+ ```
+
 ```
 The MIT License (MIT)
 
