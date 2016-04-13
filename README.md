@@ -29,7 +29,7 @@ Tool can also be used as an Node module
   */
  ```
 
-> The MIT License (MIT)
+The MIT License (MIT)
 >
 > Copyright (c) 2016 Błażej Wolańczyk
 >

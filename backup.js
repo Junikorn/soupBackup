@@ -68,12 +68,14 @@ function run(feedPath, concurrent, backupPath){
 function install(){
     return new Promise(resolve => {
         fs.access(__dirname + '/node_modules', fs.R_OK, err => {
-            if(err){
-                console.log(new Date().toLocaleTimeString(), 'installing dependencies');
+            if(err && !module.parent) {
+                log('installing dependencies');
                 require('child_process').exec('npm install xml2js@0.4.16', err => {
-                    if(err) throw err;
+                    if (err) throw err;
                     resolve();
                 });
+            }else if(err){
+                throw err;
             }else{
                 resolve();
             }
@@ -85,7 +87,7 @@ function checkWriteSpace(cfg){
     return new Promise(resolve => {
         fs.access(cfg.backupPath, fs.R_OK, err => {
             if(err && err.code === 'ENOENT'){
-                console.log(new Date().toLocaleTimeString(), 'creating backup directory');
+                log('creating backup directory');
                 fs.mkdir(cfg.backupPath, err => {
                     if(err) throw err;
                     resolve(cfg);
@@ -104,7 +106,7 @@ function readFeed(cfg){
         fs.readFile(cfg.feedPath, function (err, data) {
             if(err){
                 if(err.code === 'ENOENT'){
-                    console.log(new Date().toLocaleTimeString(), 'no feed found at path', feedPath);
+                    log('no feed found at path', feedPath);
                 }
                 throw err;
             }
@@ -121,7 +123,7 @@ function readFeed(cfg){
 
 function initConcurrent(cfg){
     cfg.total = cfg.items.length;
-    console.log(new Date().toLocaleTimeString(), cfg.total, 'entries to process');
+    log(cfg.total, 'entries to process');
     for(var i =0; i < cfg.concurrent; i++){
         processEntry(cfg);
     }
@@ -130,7 +132,7 @@ function initConcurrent(cfg){
 function processEntry(cfg){
     var items = cfg.items;
     if(items.length && items.length % 100 === 0){
-        console.log(new Date().toLocaleTimeString(), items.length, 'entries left');
+        log(items.length, 'entries left');
     }
     var item = items.shift();
     if(item){
@@ -158,7 +160,7 @@ function downloadEntry(item, cfg){
                             resolve(cfg);
                         });
                     }).on('error', err => {
-                        console.error(new Date().toLocaleTimeString(), err);
+                        log(err);
                         resolve(cfg);
                     });
                 }else{
@@ -174,18 +176,24 @@ function downloadEntry(item, cfg){
 function exit(cfg){
     if(!cfg.finished){
         cfg.finished = true;
-        console.log(new Date().toLocaleTimeString(), 'processed', cfg.total, 'entries');
-        console.log(new Date().toLocaleTimeString(), 'found', cfg.available, 'available assets');
-        console.log(new Date().toLocaleTimeString(), 'downloaded', cfg.downloaded, 'new assets');
-        console.log(new Date().toLocaleTimeString(), 'backup saved in', cfg.backupPath);
         Promise.all(cfg.promises)
             .then(() => {
+                log('processed', cfg.total, 'entries');
+                log('found', cfg.available, 'available assets');
+                log('downloaded', cfg.downloaded, 'new assets');
+                log('backup saved in', cfg.backupPath);
                 var resolve = cfg.resolve;
                 delete cfg.items;
                 delete cfg.promises;
                 delete cfg.resolve;
                 resolve(cfg);
             });
+    }
+}
+
+function log(){
+    if(!module.parent){
+        console.log(new Date().toLocaleTimeString(), ...arguments);
     }
 }
 
