@@ -1,6 +1,6 @@
 {
   "name": "soup_backup",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CMD tool (& node module) for backing up available soup.io assets taken from soup rss feed",
   "main": "backup.js",
   "dependencies": {
