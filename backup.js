@@ -3,7 +3,7 @@
 /**
  * @author Błażej Wolańczyk <https://github.com/Junikorn>
  * @name soup_backup
- * @version 1.0.1
+ * @version 1.0.2
  *
  * CMD tool for backing up available soup.io assets taken from soup RSS feed
  * You can find RSS feed on soup.io in options > privacy > export (RSS)
@@ -16,6 +16,13 @@
  *  - [optionally] after space write in file name if it is different from "soup.rss" (or rename your file)
  *  - [optionally] after space write in number of simultaneous downloads 
  *      (default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)
+ *
+ * Tool can also be used as an Node module
+ * @function run
+ * @param {String} feedPath - absolute path of rss feed
+ * @param {Number} [concurrent] - amount of concurrent downloads
+ * @param {String} [backupPath=CWD+'/backup/'] - absolute path for backup directory
+ * @returns {Promise} promise resolving with statistics object
  *
  * @license
  * The MIT License (MIT)
@@ -44,10 +51,11 @@ function run(feedPath, concurrent, backupPath){
             .then(() => {
                 return {
                     available: 0,
-                    backupPath: backupPath || __dirname + '/backup/',
+                    backupPath: path.normalize(backupPath || process.cwd() + '/backup/'),
                     concurrent: concurrent || 20,
                     downloaded: 0,
-                    feedPath: feedPath,
+                    feedPath: path.normalize(feedPath),
+                    promises: [],
                     resolve: resolve
                 };
             })
@@ -126,8 +134,9 @@ function processEntry(cfg){
     }
     var item = items.shift();
     if(item){
-        downloadEntry(item, cfg)
-            .then(processEntry);
+        var promise = downloadEntry(item, cfg);
+        cfg.promises.push(promise);
+        promise.then(processEntry);
     }else{
         exit(cfg);
     }
@@ -163,10 +172,21 @@ function downloadEntry(item, cfg){
 }
 
 function exit(cfg){
-    console.log(new Date().toLocaleTimeString(), 'processed', cfg.total, 'entries');
-    console.log(new Date().toLocaleTimeString(), 'found', cfg.available, 'available assets');
-    console.log(new Date().toLocaleTimeString(), 'downloaded', cfg.downloaded, 'new assets');
-    cfg.resolve(cfg);
+    if(!cfg.finished){
+        cfg.finished = true;
+        console.log(new Date().toLocaleTimeString(), 'processed', cfg.total, 'entries');
+        console.log(new Date().toLocaleTimeString(), 'found', cfg.available, 'available assets');
+        console.log(new Date().toLocaleTimeString(), 'downloaded', cfg.downloaded, 'new assets');
+        console.log(new Date().toLocaleTimeString(), 'backup saved in', cfg.backupPath);
+        Promise.all(cfg.promises)
+            .then(() => {
+                var resolve = cfg.resolve;
+                delete cfg.items;
+                delete cfg.promises;
+                delete cfg.resolve;
+                resolve(cfg);
+            });
+    }
 }
 
 if(!module.parent){
