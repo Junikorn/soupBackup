@@ -1,6 +1,6 @@
 {
   "name": "soup_backup",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "module for backing up available soup.io assets basing on soup rss feed (module can be required or run from bash/cmd)",
   "main": "backup.js",
   "dependencies": {

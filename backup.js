@@ -3,7 +3,7 @@
 /**
  * @author Błażej Wolańczyk <https://github.com/Junikorn>
  * @name soup_backup
- * @version 2.0.0
+ * @version 2.0.1
  *
  * CMD tool for backing up available soup.io assets taken from soup RSS feed
  * You can find RSS feed on soup.io in options > privacy > export (RSS)
@@ -222,11 +222,11 @@ function exit(cfg){
         Promise.all(cfg.promises)
             .then(() => {
                 log('processed', cfg.total, 'entries');
-                log('found', cfg.availableAssets, 'availableAssets assets');
-                log('downloadedAssets', cfg.downloadedAssets, 'new assets');
+                log('found', cfg.availableAssets, 'available assets');
+                log('downloaded', cfg.downloadedAssets, 'new assets');
                 if(cfg.youtube){
-                    log('found', cfg.availableVideos, 'availableAssets downloadedVideos');
-                    log('downloadedAssets', cfg.downloadedVideos, 'new downloadedVideos');
+                    log('found', cfg.availableVideos, 'available videos');
+                    log('downloaded', cfg.downloadedVideos, 'new videos');
                 }
                 log('backup saved in', cfg.backupPath);
                 var resolve = cfg.resolve;
@@ -257,7 +257,7 @@ var mapping = {
     boolArgRE = /^-([^\s=]+)$/i;
 
 if(!module.parent){
-    console.log('Soup Backup 2.0.0 by Błażej Wolańczyk (c) 2016');
+    console.log('Soup Backup 2.0.1 by Błażej Wolańczyk (c) 2016');
     var options = {};
     process.argv.forEach(arg => {
         if(argRE.test(arg)){

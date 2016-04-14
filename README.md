@@ -1,4 +1,4 @@
-#soup_backup 2.0.0
+#soup_backup 2.0.1
 by [Błażej Wolańczyk](https://github.com/Junikorn)
 
 
