@@ -1,30 +1,37 @@
-#soup_backup 1.0.3
+#soup_backup 2.0.0
 by [Błażej Wolańczyk](https://github.com/Junikorn)
 
 
-CMD tool for backing up available soup.io assets taken from soup RSS feed.
+CMD tool for backing up availableAssets soup.io assets taken from soup RSS feed.
 You can find RSS feed on soup.io in options > privacy > export (RSS).
 If the RSS file won't download at first time (e.g. showing 504 Gateway Timeout) please retry
 
 How to run:
  - install [node.js](http://nodejs.org) at least at version 4.4.3
  - open CMD/bash in this directory (on Windows: Shift + Right Click > Open Command Line Here)
- - write in command "node backup"
- - [optionally] after space write in file name if it is different from "soup.rss" (or rename your file)
- - [optionally] after space write in number of simultaneous downloads
-     (default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)
+ - write in command: node backup
+ - you can add arguments presented below to the command:
+   - -f=[relative path of soup rss feed] *(if feed file name different than soup.rss)*
+   - -c=[number of concurrent downloads] *(default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)*
+   - -b=[relative path of backup directory] *(default is CWD/backup/)*
+   - -yt *(download youtube videos present in feed)*
 
 Tool can also be used as an Node module
  ```javascript
   var soupBackup = require('soup_backup');
-  soupBackup('soup.rss').then(stats => {
+  soupBackup({
+    feedPath: '/home/soup/feed.rss',
+    backupPath: '/home/soup/backup/'
+  }).then(stats => {
     //do something
   });
  /**
   * @function soupBackup
-  * @param {String} feedPath - absolute path of rss feed
-  * @param {Number} [concurrent=20] - amount of concurrent downloads
-  * @param {String} [backupPath=CWD+'/backup/'] - absolute path for backup directory
+  * @param {Object} options
+  * @param {String} options.backupPath - absolute path to backup directory
+  * @param {String} options.feedPath - absolute path to feed file
+  * @param {Number} [options.concurrent=20] - number of concurrent downloads
+  * @param {Boolean} [options.youtube=false] - flag for downloading youtube videos
   * @returns {Promise} promise resolving with statistics object
   */
  ```

@@ -1,10 +1,11 @@
 {
   "name": "soup_backup",
-  "version": "1.0.3",
-  "description": "CMD tool (& node module) for backing up available soup.io assets taken from soup rss feed",
+  "version": "2.0.0",
+  "description": "module for backing up available soup.io assets basing on soup rss feed (module can be required or run from bash/cmd)",
   "main": "backup.js",
   "dependencies": {
-    "xml2js": "0.4.16"
+    "xml2js": "0.4.16",
+    "ytdl-core": "0.7.13"
   },
   "devDependencies": {},
   "scripts": {

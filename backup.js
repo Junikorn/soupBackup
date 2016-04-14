@@ -3,7 +3,7 @@
 /**
  * @author Błażej Wolańczyk <https://github.com/Junikorn>
  * @name soup_backup
- * @version 1.0.3
+ * @version 2.0.0
  *
  * CMD tool for backing up available soup.io assets taken from soup RSS feed
  * You can find RSS feed on soup.io in options > privacy > export (RSS)
@@ -13,15 +13,20 @@
  *  - install node.js (http://nodejs.org) at least at version 4.4.3
  *  - open CMD/bash in this directory (on Windows: Shift + Right Click > Open Command Line Here)
  *  - write in command "node backup"
- *  - [optionally] after space write in file name if it is different from "soup.rss" (or rename your file)
- *  - [optionally] after space write in number of simultaneous downloads 
- *      (default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)
+ *  - you can add arguments presented below to the command:
+ *    - -f=[relative path of soup rss feed] *(if feed file name different than soup.rss)*
+ *    - -c=[number of concurrent downloads] *(default is 20, please keep it within reason, your bandwidth, file system and processor are the limit)*
+ *    - -b=[relative path of backup directory] *(default is CWD/backup/)*
+ *    - -yt *(download youtube videos present in feed)*
+ *
  *
  * Tool can also be used as an Node module
  * @function run
- * @param {String} feedPath - absolute path of rss feed
- * @param {Number} [concurrent] - amount of concurrent downloads
- * @param {String} [backupPath=CWD+'/backup/'] - absolute path for backup directory
+ * @param {Object} options
+ * @param {String} options.backupPath - absolute path to backup directory
+ * @param {String} options.feedPath - absolute path to feed file
+ * @param {Number} [options.concurrent=20] - number of concurrent downloads
+ * @param {Boolean} [options.youtube=false] - flag for downloading youtube videos
  * @returns {Promise} promise resolving with statistics object
  *
  * @license
@@ -43,20 +48,28 @@
 
 var fs = require('fs'),
     http = require('http'),
-    path = require('path');
+    path = require('path'),
+    youtubeRE = /youtube\.com|youtu\.be/i,
+    ytOptions = { filter: function(format) {
+        return format.container === 'mp4' && format.audioBitrate && format.bitrate;
+    } },
+    ytdl;
 
-function run(feedPath, concurrent, backupPath){
+function run(options){
     return new Promise(resolve => {
         install()
             .then(() => {
                 return {
-                    available: 0,
-                    backupPath: path.normalize(backupPath || process.cwd() + '/backup/'),
-                    concurrent: concurrent || 20,
-                    downloaded: 0,
-                    feedPath: path.normalize(feedPath),
+                    availableAssets: 0,
+                    availableVideos: 0,
+                    backupPath: path.normalize(options.backupPath),
+                    concurrent: +options.concurrent || 20,
+                    downloadedAssets: 0,
+                    downloadedVideos: 0,
+                    feedPath: path.normalize(options.feedPath),
                     promises: [],
-                    resolve: resolve
+                    resolve: resolve,
+                    youtube: options.youtube || false
                 };
             })
             .then(checkWriteSpace)
@@ -70,7 +83,7 @@ function install(){
         fs.access(__dirname + '/node_modules', fs.R_OK, err => {
             if(err && !module.parent) {
                 log('installing dependencies');
-                require('child_process').exec('npm install xml2js@0.4.16', err => {
+                require('child_process').exec('npm install', err => {
                     if (err) throw err;
                     resolve();
                 });
@@ -84,18 +97,26 @@ function install(){
 }
 
 function checkWriteSpace(cfg){
+    return Promise.resolve()
+        .then(() => ensureDirectory(cfg.backupPath))
+        .then(() => ensureDirectory(cfg.backupPath + 'video/'))
+        .then(() => cfg);
+}
+
+function ensureDirectory(dirPath){
     return new Promise(resolve => {
-        fs.access(cfg.backupPath, fs.R_OK, err => {
+        dirPath = path.normalize(dirPath);
+        fs.access(dirPath, fs.R_OK | fs.W_OK, err => {
             if(err && err.code === 'ENOENT'){
-                log('creating backup directory');
-                fs.mkdir(cfg.backupPath, err => {
+                log('creating backup directory', dirPath);
+                fs.mkdir(dirPath, err => {
                     if(err) throw err;
-                    resolve(cfg);
+                    resolve();
                 });
             }else if(err) {
                 throw err;
             }else{
-                resolve(cfg);
+                resolve();
             }
         });
     });
@@ -106,7 +127,7 @@ function readFeed(cfg){
         fs.readFile(cfg.feedPath, function (err, data) {
             if(err){
                 if(err.code === 'ENOENT'){
-                    log('no feed found at path', feedPath);
+                    log('no feed found at path', cfg.feedPath);
                 }
                 throw err;
             }
@@ -122,6 +143,9 @@ function readFeed(cfg){
 }
 
 function initConcurrent(cfg){
+    if(cfg.youtube){
+        ytdl = require('ytdl-core');
+    }
     cfg.total = cfg.items.length;
     log(cfg.total, 'entries to process');
     for(var i =0; i < cfg.concurrent; i++){
@@ -147,7 +171,7 @@ function processEntry(cfg){
 function downloadEntry(item, cfg){
     return new Promise(resolve => {
         if(item.enclosure){
-            cfg.available++;
+            cfg.availableAssets++;
             var url = item.enclosure.$.url,
                 filePath = cfg.backupPath + path.basename(url);
             fs.access(filePath, fs.R_OK, err => {
@@ -156,19 +180,38 @@ function downloadEntry(item, cfg){
                     http.get(url, response => {
                         response.pipe(file);
                         response.on('end', () => {
-                            cfg.downloaded++;
+                            cfg.downloadedAssets++;
                             resolve(cfg);
                         });
-                    }).on('error', err => {
-                        log(err);
-                        resolve(cfg);
-                    });
+                    }).on('error', () => resolve(cfg));
                 }else{
                     resolve(cfg);
                 }
             });
         }else{
-            resolve(cfg);
+            var metadata = JSON.parse(item['soup:attributes']);
+            if(cfg.youtube && metadata.type === 'video' && youtubeRE.test(metadata.source)){
+                ytdl.getInfo(metadata.source, (err, info) => {
+                    if(err) return resolve(cfg);
+                    var filePath = [cfg.backupPath, 'video/', info.video_id, '.mp4'].join('');
+                    cfg.availableVideos++;
+                    fs.access(filePath, fs.R_OK, err => {
+                        if(err && err.code === 'ENOENT'){
+                            log('downloading video', info.video_id);
+                            ytdl.downloadFromInfo(info, ytOptions)
+                                .pipe(fs.createWriteStream(filePath))
+                                .on('finish', () => {
+                                    cfg.downloadedVideos++;
+                                    resolve(cfg);
+                                }).on('close', () => resolve(cfg));
+                        }else{
+                            resolve(cfg);
+                        }
+                    });
+                });
+            }else{
+                resolve(cfg);
+            }
         }
     });
 }
@@ -179,8 +222,12 @@ function exit(cfg){
         Promise.all(cfg.promises)
             .then(() => {
                 log('processed', cfg.total, 'entries');
-                log('found', cfg.available, 'available assets');
-                log('downloaded', cfg.downloaded, 'new assets');
+                log('found', cfg.availableAssets, 'availableAssets assets');
+                log('downloadedAssets', cfg.downloadedAssets, 'new assets');
+                if(cfg.youtube){
+                    log('found', cfg.availableVideos, 'availableAssets downloadedVideos');
+                    log('downloadedAssets', cfg.downloadedVideos, 'new downloadedVideos');
+                }
                 log('backup saved in', cfg.backupPath);
                 var resolve = cfg.resolve;
                 delete cfg.items;
@@ -197,11 +244,41 @@ function log(){
     }
 }
 
+//export or parsing args and run
+
+var mapping = {
+        b: 'backupPath',
+        c: 'concurrent',
+        f: 'feedPath',
+        yt: 'youtube'
+    },
+    quotesRE = /"([^"]+)"/i,
+    argRE = /^-([^\s=]+)=([^\s]+)/i,
+    boolArgRE = /^-([^\s=]+)$/i;
+
 if(!module.parent){
-    console.log('Soup Backup by Błażej Wolańczyk (c) 2016');
-    var feedPath = __dirname + '/' + (process.argv[2] || 'soup.rss'),
-        concurrent = process.argv[3] ? +process.argv[3] : undefined;
-    run(feedPath, concurrent).then(() => process.exit());
+    console.log('Soup Backup 2.0.0 by Błażej Wolańczyk (c) 2016');
+    var options = {};
+    process.argv.forEach(arg => {
+        if(argRE.test(arg)){
+            let match = arg.match(argRE),
+                name = match[1],
+                value = match[2];
+            value = quotesRE.test(value) ? value.match(quotesRE)[1] : value;
+            options[mapping[name] ? mapping[name] : name] = value;
+        }else if(boolArgRE.test(arg)){
+            let match = arg.match(boolArgRE),
+                name = match[1];
+            options[mapping[name] ? mapping[name] : name] = true;
+        }
+    });
+    options.feedPath = options.feedPath ?
+        process.cwd() + '/' + options.feedPath :
+        process.cwd() + '/soup.rss';
+    options.backupPath = options.backupPath ?
+        process.cwd() + '/' + options.backupPath :
+        process.cwd() + '/backup/';
+    run(options).then(() => process.exit());
 }else{
     module.exports = run;
 }
