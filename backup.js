@@ -47,7 +47,7 @@
  */
 
 var fs = require('fs'),
-    http = require('http'),
+    http = require('https'),
     path = require('path'),
     youtubeRE = /youtube\.com|youtu\.be/i,
     ytOptions = { filter: function(format) {
